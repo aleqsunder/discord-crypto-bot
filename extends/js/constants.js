@@ -14,5 +14,8 @@ export const default_webhook_data = {
         avatar: ethereum_avatar
     }
 }
-export const api_path = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=ethereum,bitcoin'
+export const get_markets = '/coins/markets'
+export const available_methods = [
+    '/coins/markets'
+]
 export const discord_intents = [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES]

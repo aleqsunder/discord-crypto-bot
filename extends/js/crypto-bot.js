@@ -1,12 +1,13 @@
 import fetch from 'node-fetch'
 import {Client, MessageEmbed} from 'discord.js'
-import {formatValue} from './helpers.js'
 import {
-    api_path,
+    available_methods,
     default_timeout,
     default_webhook_data,
-    discord_intents as intents
+    discord_intents as intents,
+    get_markets
 } from './constants.js'
+import CryptoQuote from "./crypto-quote.js"
 
 export default class CryptoBot {
     constructor(_apiKey = null) {
@@ -14,6 +15,7 @@ export default class CryptoBot {
             return console.error('api key not specified')
         }
         
+        this.origin = 'https://api.coingecko.com/api/v3'
         this._cache = []
         this.apiKey = _apiKey
         
@@ -24,14 +26,23 @@ export default class CryptoBot {
     }
     
     async fetchCryptoCurrency() {
-        const response = await fetch(api_path)
-        const data = await response.json()
-        if (response.error) {
-            this.error(response)
+        try {
+            const path = this.getPath(get_markets, {
+                vs_currency: 'usd',
+                ids: ['ethereum', 'bitcoin'].join(',')
+            })
+            const response = await fetch(path)
+            const data = await response.json()
+            if (response.error) {
+                this.error(response)
+                return false
+            }
+            this.cache = data
+        } catch (e) {
+            console.error(e)
             return false
         }
-    
-        this.cache = data
+        
         return true
     }
     
@@ -39,9 +50,16 @@ export default class CryptoBot {
         console.log('Get up-to-date quotes')
         if (await this.fetchCryptoCurrency()) {
             console.log('Received! Change the status of the bot')
+            const name = []
+            if (this.cache?.btc) {
+                name.push('$' + this.cache.btc.price)
+            }
+            if (this.cache?.eth) {
+                name.push('$' + this.cache.eth.price)
+            }
             this.client.user.setPresence({
                 activities: [{
-                    name: `$${this.cache.btc.current_price} / $${this.cache.eth.current_price}`,
+                    name: name.length > 0 ? name.join(' / ') : 'пустоте',
                     type: 'COMPETING'
                 }],
                 status: 'idle'
@@ -83,11 +101,13 @@ export default class CryptoBot {
         }
         
         console.log('Forming data to send to the webhook')
-        
+    
         const {name, avatar} = default_webhook_data[type]
-        const fields = this.formatFields(type)
+        /** @type CryptoQuote */
+        const quote = this.cache[type]
+        const fields = this.formatFields(quote)
         const embed = new MessageEmbed()
-            .setTitle(`${this.cache[type].name} - $${this.cache[type].current_price}`)
+            .setTitle(`${quote.name} - $${quote.price}`)
             .addFields(fields)
             .setTimestamp()
         
@@ -101,20 +121,20 @@ export default class CryptoBot {
             })
     }
     
-    formatFields(type) {
+    formatFields(quote) {
         return [
             {
                 name: 'Дневной интервал (минимум/максимум)',
-                value: `${formatValue(this.cache[type].high_24h)} / ${formatValue(this.cache[type].low_24h)}`
+                value: `${quote.dayHigh} / ${quote.dayLow}`
             },
             {
                 name: 'Разница за сутки',
-                value: formatValue(this.cache[type].price_change_24h),
+                value: quote.dayPriceChange,
                 inline: true
             },
             {
                 name: 'Разница за сутки (%)',
-                value: formatValue(this.cache[type].price_change_percentage_24h),
+                value: quote.dayPriceChangeInPercentage,
                 inline: true
             }
         ]
@@ -129,6 +149,23 @@ export default class CryptoBot {
     }
     
     set cache(data) {
-        this._cache = data.reduce((obj, crypto) => (obj[crypto.symbol] = crypto, obj), {})
+        this._cache = data.reduce((obj, crypto) => {
+            obj[crypto.symbol] = new CryptoQuote(crypto)
+            return obj
+        }, {})
+    }
+    
+    getPath(method = get_markets, params = []) {
+        if (!available_methods.includes(method)) {
+            throw new Error('Method is not available')
+        }
+        
+        let search = []
+        if (Object.keys(params).length > 0) {
+            for (let param in params) {
+                search.push(param + '=' + params[param])
+            }
+        }
+        return this.origin + method + (search.length > 0 ? '?' : '') + search.join('&')
     }
 }
