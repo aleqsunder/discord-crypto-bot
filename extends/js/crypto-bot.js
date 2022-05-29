@@ -60,7 +60,7 @@ export default class CryptoBot {
             this.client.user.setPresence({
                 activities: [{
                     name: name.length > 0 ? name.join(' / ') : 'пустоте',
-                    type: 'COMPETING'
+                    type: 'STREAMING'
                 }],
                 status: 'idle'
             })
